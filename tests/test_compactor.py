@@ -102,3 +102,49 @@ def test_extract_tool_result_long_truncated():
 def test_extract_meta_dropped():
     ev = {"type": "meta", "timestamp": "2026-05-25T09:00:00Z"}
     assert extract_event(ev) is None
+
+
+from reporter.compactor import render_session
+
+
+def test_render_session_basic():
+    events = [
+        {"ts": "2026-05-25T09:00:00Z", "kind": "user", "text": "hello"},
+        {"ts": "2026-05-25T09:00:05Z", "kind": "assistant", "text": "hi"},
+        {"ts": "2026-05-25T09:01:00Z", "kind": "tool_use", "name": "Edit",
+         "file_path": "/a/b.py"},
+        {"ts": "2026-05-25T09:01:01Z", "kind": "tool_result", "text": "ok"},
+    ]
+    out = render_session("my-proj", events)
+    assert "=== SESSION: my-proj" in out
+    assert "[09:00] USER: hello" in out
+    assert "[09:00] CLAUDE: hi" in out
+    assert "[09:01] TOOL: Edit /a/b.py" in out
+    assert "[09:01] RESULT: ok" in out
+    assert "=== FILES TOUCHED: /a/b.py ===" in out
+
+
+def test_render_session_empty_returns_empty_string():
+    assert render_session("proj", []) == ""
+
+
+def test_render_session_collects_unique_files():
+    events = [
+        {"ts": "2026-05-25T09:01:00Z", "kind": "tool_use", "name": "Edit",
+         "file_path": "/a.py"},
+        {"ts": "2026-05-25T09:02:00Z", "kind": "tool_use", "name": "Read",
+         "file_path": "/a.py"},
+        {"ts": "2026-05-25T09:03:00Z", "kind": "tool_use", "name": "Write",
+         "file_path": "/b.py"},
+    ]
+    out = render_session("p", events)
+    assert "FILES TOUCHED: /a.py, /b.py" in out
+
+
+def test_render_session_includes_bash_command():
+    events = [
+        {"ts": "2026-05-25T09:01:00Z", "kind": "tool_use", "name": "Bash",
+         "command": "pytest -x"},
+    ]
+    out = render_session("p", events)
+    assert '[09:01] TOOL: Bash "pytest -x"' in out

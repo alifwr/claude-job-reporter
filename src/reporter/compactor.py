@@ -84,3 +84,49 @@ def _extract_tool_use(ts: str, block: dict) -> dict:
     if "command" in inp:
         out["command"] = _truncate(str(inp["command"]), TOOL_PARAM_MAX_CHARS)
     return out
+
+
+def _hhmm(ts: str) -> str:
+    """Return 'HH:MM' from an ISO timestamp; '??:??' if unparseable."""
+    if len(ts) >= 16 and ts[10] == "T":
+        return ts[11:16]
+    return "??:??"
+
+
+def render_session(slug: str, events: list[dict]) -> str:
+    """Render a per-session compact text block. Returns '' if events is empty."""
+    if not events:
+        return ""
+
+    start_ts = events[0]["ts"]
+    end_ts = events[-1]["ts"]
+    lines = [f"=== SESSION: {slug} | {start_ts} — {end_ts} | {len(events)} events ==="]
+
+    files_touched: list[str] = []
+    seen_files: set[str] = set()
+
+    for ev in events:
+        t = _hhmm(ev["ts"])
+        kind = ev["kind"]
+        if kind == "user":
+            lines.append(f"[{t}] USER: {ev['text']}")
+        elif kind == "assistant":
+            lines.append(f"[{t}] CLAUDE: {ev['text']}")
+        elif kind == "tool_use":
+            name = ev["name"]
+            if "file_path" in ev:
+                lines.append(f"[{t}] TOOL: {name} {ev['file_path']}")
+                if ev["file_path"] not in seen_files:
+                    seen_files.add(ev["file_path"])
+                    files_touched.append(ev["file_path"])
+            elif "command" in ev:
+                lines.append(f'[{t}] TOOL: {name} "{ev["command"]}"')
+            else:
+                lines.append(f"[{t}] TOOL: {name}")
+        elif kind == "tool_result":
+            lines.append(f"[{t}] RESULT: {ev['text']}")
+
+    if files_touched:
+        lines.append(f"=== FILES TOUCHED: {', '.join(files_touched)} ===")
+
+    return "\n".join(lines) + "\n"
