@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 CLAUDE_PROJECTS_DIR = Path("~/.claude/projects").expanduser()
 
@@ -66,3 +68,52 @@ def discover_session_files(
                     pass
 
     return found
+
+
+_DURATION_RE = re.compile(r"^(\d+)([mhdw])$")
+_UNIT_TO_KWARG = {"m": "minutes", "h": "hours", "d": "days", "w": "weeks"}
+
+
+def parse_duration(s: str) -> timedelta:
+    """Parse '24h', '3d', '90m', '1w' to a timedelta."""
+    m = _DURATION_RE.match(s.strip())
+    if not m:
+        raise ValueError(f"Invalid duration: {s!r} (expected e.g. '24h', '3d')")
+    return timedelta(**{_UNIT_TO_KWARG[m.group(2)]: int(m.group(1))})
+
+
+def iter_events_in_window(
+    jsonl: Path,
+    cutoff: datetime,
+) -> Iterator[dict]:
+    """Stream events from a JSONL file where event timestamp >= cutoff.
+
+    Skips lines that fail to parse. Skips events without a timestamp.
+    `cutoff` must be timezone-aware.
+    """
+    if cutoff.tzinfo is None:
+        raise ValueError("cutoff must be timezone-aware")
+
+    try:
+        with jsonl.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                ts_str = event.get("timestamp")
+                if not ts_str:
+                    continue
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                if ts >= cutoff:
+                    yield event
+    except OSError:
+        return
