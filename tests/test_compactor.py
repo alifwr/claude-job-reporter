@@ -148,3 +148,26 @@ def test_render_session_includes_bash_command():
     ]
     out = render_session("p", events)
     assert '[09:01] TOOL: Bash "pytest -x"' in out
+
+
+from reporter.compactor import trim_to_budget
+
+
+def test_trim_below_budget_unchanged():
+    sessions = {"a": [{"ts": "2026-05-25T09:00:00Z", "kind": "user", "text": "hi"}]}
+    out = trim_to_budget(sessions, char_budget=1000)
+    assert out == sessions
+
+
+def test_trim_drops_oldest_events_first():
+    sessions = {
+        "p": [
+            {"ts": "2026-05-25T01:00:00Z", "kind": "user", "text": "OLD"},
+            {"ts": "2026-05-25T02:00:00Z", "kind": "user", "text": "MID"},
+            {"ts": "2026-05-25T03:00:00Z", "kind": "user", "text": "NEW"},
+        ],
+    }
+    out = trim_to_budget(sessions, char_budget=50)
+    rendered = "".join(ev.get("text", "") for ev in out["p"])
+    assert "NEW" in rendered
+    assert any(ev.get("kind") == "omitted" for ev in out["p"])

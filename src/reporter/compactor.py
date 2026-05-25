@@ -123,6 +123,8 @@ def render_session(slug: str, events: list[dict]) -> str:
                 lines.append(f'[{t}] TOOL: {name} "{ev["command"]}"')
             else:
                 lines.append(f"[{t}] TOOL: {name}")
+        elif kind == "omitted":
+            lines.append(ev["text"])
         elif kind == "tool_result":
             lines.append(f"[{t}] RESULT: {ev['text']}")
 
@@ -130,3 +132,46 @@ def render_session(slug: str, events: list[dict]) -> str:
         lines.append(f"=== FILES TOUCHED: {', '.join(files_touched)} ===")
 
     return "\n".join(lines) + "\n"
+
+
+def _estimated_size(events: list[dict]) -> int:
+    """Roughly how many characters this event list will render to."""
+    return sum(len(ev.get("text", "")) + len(ev.get("name", "")) + 40 for ev in events)
+
+
+def trim_to_budget(sessions: dict[str, list[dict]], char_budget: int) -> dict[str, list[dict]]:
+    """Trim oldest events across sessions until total rendered size <= budget.
+
+    Adds an `omitted` placeholder per session that lost events so the LLM
+    knows context was dropped.
+    """
+    sessions = {k: list(v) for k, v in sessions.items()}  # copy
+    total = sum(_estimated_size(evs) for evs in sessions.values())
+    if total <= char_budget:
+        return sessions
+
+    # Build a single list of (session_key, event) sorted oldest-first.
+    flat: list[tuple[str, dict]] = []
+    for key, evs in sessions.items():
+        for ev in evs:
+            flat.append((key, ev))
+    flat.sort(key=lambda pair: pair[1].get("ts", ""))
+
+    dropped_per_session: dict[str, int] = {}
+    i = 0
+    while total > char_budget and i < len(flat):
+        key, ev = flat[i]
+        if ev in sessions[key]:
+            sessions[key].remove(ev)
+            total -= len(ev.get("text", "")) + len(ev.get("name", "")) + 40
+            dropped_per_session[key] = dropped_per_session.get(key, 0) + 1
+        i += 1
+
+    for key, n in dropped_per_session.items():
+        sessions[key].insert(0, {
+            "ts": "0000-00-00T00:00:00Z",
+            "kind": "omitted",
+            "text": f"[{n} earlier events omitted]",
+        })
+
+    return sessions
