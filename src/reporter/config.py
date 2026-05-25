@@ -11,7 +11,7 @@ import tomli_w
 DEFAULT_CONFIG_PATH = Path("~/.config/reporter/config.toml").expanduser()
 
 DEFAULTS: dict[str, Any] = {
-    "since": "24h",
+    "since": "30h",
     "model": "sonnet",
     "out_dir": Path("~/reports").expanduser(),
     "clipboard": True,
