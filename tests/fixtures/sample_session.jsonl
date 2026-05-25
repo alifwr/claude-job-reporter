@@ -1,0 +1,2 @@
+{"type":"user","timestamp":"2026-05-25T09:00:00Z","sessionId":"sess-1","cwd":"/home/test/proj","message":{"content":"hello"}}
+{"type":"assistant","timestamp":"2026-05-25T09:00:05Z","sessionId":"sess-1","cwd":"/home/test/proj","message":{"content":[{"type":"text","text":"hi"}]}}
