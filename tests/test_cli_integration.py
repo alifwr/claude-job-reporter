@@ -115,3 +115,16 @@ def test_run_exits_2_when_no_sessions(tmp_path: Path, monkeypatch):
         "--out", str(tmp_path / "r.md"),
     ])
     assert result.exit_code == 2
+
+
+def test_run_without_init_exits_1(tmp_path: Path):
+    cfg = tmp_path / "missing.toml"
+    result = runner.invoke(app, ["--config", str(cfg), "run"])
+    assert result.exit_code == 1
+    assert "init" in (result.stdout + result.stderr).lower()
+
+
+def test_list_without_init_exits_1(tmp_path: Path):
+    cfg = tmp_path / "missing.toml"
+    result = runner.invoke(app, ["--config", str(cfg), "list"])
+    assert result.exit_code == 1

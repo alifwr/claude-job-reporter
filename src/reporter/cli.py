@@ -18,12 +18,23 @@ from reporter.crawler import (
 )
 from reporter.compactor import extract_event, render_session, trim_to_budget
 from reporter.reporter import generate_report, ClaudeError
-from reporter.output import deliver
+from reporter.output import deliver, OutputError
 from reporter.prompts import build_prompt
 
 COMPACT_CHAR_BUDGET = 200_000  # ~50k tokens
 
 app = typer.Typer(help="Generate daily activity reports from Claude Code sessions.")
+
+
+def _load_config_or_exit() -> Config:
+    try:
+        return load(_CONFIG_PATH)
+    except FileNotFoundError:
+        typer.echo(
+            f"error: config not found at {_CONFIG_PATH}. Run `reporter init` first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
 _CONFIG_PATH: Path = DEFAULT_CONFIG_PATH
 
@@ -55,7 +66,7 @@ def add(path: Path) -> None:
     if not path.exists() or not path.is_dir():
         typer.echo(f"error: directory not found: {path}", err=True)
         raise typer.Exit(code=1)
-    cfg = load(_CONFIG_PATH)
+    cfg = _load_config_or_exit()
     resolved = path.resolve()
     if resolved in cfg.projects:
         typer.echo(f"already registered: {resolved}")
@@ -68,7 +79,7 @@ def add(path: Path) -> None:
 @app.command()
 def remove(path: Path) -> None:
     """Unregister a project directory."""
-    cfg = load(_CONFIG_PATH)
+    cfg = _load_config_or_exit()
     resolved = path.resolve()
     if resolved not in cfg.projects:
         typer.echo(f"not registered: {resolved}", err=True)
@@ -81,7 +92,7 @@ def remove(path: Path) -> None:
 @app.command(name="list")
 def list_projects() -> None:
     """List registered project directories."""
-    cfg = load(_CONFIG_PATH)
+    cfg = _load_config_or_exit()
     if not cfg.projects:
         typer.echo("(no projects registered)")
         return
@@ -98,7 +109,7 @@ def run(
     claude_binary: Optional[str] = typer.Option(None, "--claude-binary", help="Path to claude CLI."),
 ) -> None:
     """Crawl sessions, generate report, write file/stdout/clipboard."""
-    cfg = load(_CONFIG_PATH)
+    cfg = _load_config_or_exit()
     since_str = since or cfg.since
     model_name = model or cfg.model
     binary = claude_binary or cfg.claude_binary
@@ -124,7 +135,7 @@ def run(
         raise typer.Exit(code=2)
 
     sessions: dict[str, list[dict]] = {}
-    project_for_slug = {path_to_slug(p): p.name for p in cfg.projects}
+    project_for_slug = {path_to_slug(p): str(p) for p in cfg.projects}
 
     for jsonl in files:
         slug_dir_name = jsonl.parent.name
@@ -152,4 +163,8 @@ def run(
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=3)
 
-    deliver(report, out, clipboard=use_clipboard)
+    try:
+        deliver(report, out, clipboard=use_clipboard)
+    except OutputError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1)

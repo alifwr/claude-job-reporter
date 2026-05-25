@@ -55,7 +55,11 @@ def extract_event(ev: dict) -> dict | None:
                         "kind": "tool_result",
                         "text": _truncate_tool_result(str(body), TOOL_RESULT_MAX_CHARS),
                     }
-            return None
+            # No tool_result — extract text blocks (e.g., user paste with image).
+            text = _content_text(content)
+            if not text:
+                return None
+            return {"ts": ts, "kind": "user", "text": _truncate(text, PROMPT_MAX_CHARS)}
         text = str(content) if content is not None else ""
         return {"ts": ts, "kind": "user", "text": _truncate(text, PROMPT_MAX_CHARS)}
 

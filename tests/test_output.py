@@ -39,3 +39,15 @@ def test_deliver_creates_parent_dirs(tmp_path: Path):
     out_file = tmp_path / "nested" / "dir" / "r.md"
     deliver("X", out_file, clipboard=False)
     assert out_file.read_text() == "X"
+
+
+import pytest
+from reporter.output import OutputError
+
+
+def test_deliver_raises_output_error_on_unwritable_path(tmp_path: Path):
+    # Use a path under a file (not a directory) to trigger OSError.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x")
+    with pytest.raises(OutputError):
+        deliver("data", blocker / "nested" / "r.md", clipboard=False)

@@ -171,3 +171,29 @@ def test_trim_drops_oldest_events_first():
     rendered = "".join(ev.get("text", "") for ev in out["p"])
     assert "NEW" in rendered
     assert any(ev.get("kind") == "omitted" for ev in out["p"])
+
+
+def test_extract_user_with_image_keeps_text():
+    ev = {
+        "type": "user",
+        "timestamp": "2026-05-25T09:00:00Z",
+        "message": {"content": [
+            {"type": "image", "source": {"type": "base64", "data": "..."}},
+            {"type": "text", "text": "explain this diagram"},
+        ]},
+    }
+    out = extract_event(ev)
+    assert out is not None
+    assert out["kind"] == "user"
+    assert out["text"] == "explain this diagram"
+
+
+def test_extract_user_with_no_text_blocks_dropped():
+    ev = {
+        "type": "user",
+        "timestamp": "2026-05-25T09:00:00Z",
+        "message": {"content": [
+            {"type": "image", "source": {"type": "base64", "data": "..."}},
+        ]},
+    }
+    assert extract_event(ev) is None
