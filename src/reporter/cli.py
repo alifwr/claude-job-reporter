@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
+from reporter import __version__
 from reporter.config import Config, DEFAULT_CONFIG_PATH, load, save
 from reporter.crawler import (
     CLAUDE_PROJECTS_DIR,
@@ -23,26 +27,73 @@ from reporter.prompts import build_prompt
 
 COMPACT_CHAR_BUDGET = 200_000  # ~50k tokens
 
-app = typer.Typer(help="Generate daily activity reports from Claude Code sessions.")
+console = Console()
+err_console = Console(stderr=True)
+
+CONFIG_PANEL = "Config commands"
+RUN_PANEL = "Run command"
+
+HELP_INTRO = """
+Generate daily activity reports from your Claude Code session transcripts.
+
+[bold]Workflow[/bold]
+  1. [cyan]reporter init[/cyan]                  create config file
+  2. [cyan]reporter add /path/to/proj[/cyan]     register a project to watch
+  3. [cyan]reporter run --since 24h[/cyan]       crawl + summarize via [bold]claude -p[/bold]
+
+[bold]Examples[/bold]
+  [dim]$[/dim] reporter run                       [dim]# last 24h, default output path[/dim]
+  [dim]$[/dim] reporter run --since 3d            [dim]# last 3 days[/dim]
+  [dim]$[/dim] reporter run --out report.md       [dim]# custom path[/dim]
+  [dim]$[/dim] reporter run --no-clip             [dim]# skip clipboard copy[/dim]
+
+[dim]Config lives at ~/.config/reporter/config.toml unless --config is set.[/dim]
+"""
+
+_CONFIG_PATH: Path = DEFAULT_CONFIG_PATH
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(f"reporter [cyan]v{__version__}[/cyan]")
+        raise typer.Exit()
 
 
 def _load_config_or_exit() -> Config:
     try:
         return load(_CONFIG_PATH)
     except FileNotFoundError:
-        typer.echo(
-            f"error: config not found at {_CONFIG_PATH}. Run `reporter init` first.",
-            err=True,
+        err_console.print(
+            f"[red]error:[/red] config not found at [cyan]{_CONFIG_PATH}[/cyan]. "
+            f"Run [bold cyan]reporter init[/bold cyan] first."
         )
         raise typer.Exit(code=1)
 
-_CONFIG_PATH: Path = DEFAULT_CONFIG_PATH
+
+app = typer.Typer(
+    help=HELP_INTRO,
+    rich_markup_mode="rich",
+    no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 
 
 @app.callback()
 def _global_options(
     config: Path = typer.Option(
-        DEFAULT_CONFIG_PATH, "--config", help="Path to the config file."
+        DEFAULT_CONFIG_PATH,
+        "--config",
+        "-c",
+        help="Path to the config file.",
+        show_default=True,
+    ),
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show version and exit.",
     ),
 ) -> None:
     """Configure the global config path before subcommands run."""
@@ -50,65 +101,108 @@ def _global_options(
     _CONFIG_PATH = config
 
 
-@app.command()
+@app.command(rich_help_panel=CONFIG_PANEL)
 def init() -> None:
-    """Create an empty config file at the configured path."""
+    """
+    Create an empty config file.
+
+    [dim]Writes to ~/.config/reporter/config.toml unless overridden with --config.[/dim]
+    """
     if _CONFIG_PATH.exists():
-        typer.echo(f"Config already exists: {_CONFIG_PATH}")
+        console.print(f"[yellow]config already exists:[/yellow] [cyan]{_CONFIG_PATH}[/cyan]")
         raise typer.Exit(code=0)
     save(Config(), _CONFIG_PATH)
-    typer.echo(f"Created {_CONFIG_PATH}")
+    console.print(f"[green]✓ created[/green] [cyan]{_CONFIG_PATH}[/cyan]")
 
 
-@app.command()
-def add(path: Path) -> None:
+@app.command(rich_help_panel=CONFIG_PANEL)
+def add(
+    path: Path = typer.Argument(..., help="Project directory to watch."),
+) -> None:
     """Register a project directory to watch."""
     if not path.exists() or not path.is_dir():
-        typer.echo(f"error: directory not found: {path}", err=True)
+        err_console.print(f"[red]error:[/red] directory not found: [cyan]{path}[/cyan]")
         raise typer.Exit(code=1)
     cfg = _load_config_or_exit()
     resolved = path.resolve()
     if resolved in cfg.projects:
-        typer.echo(f"already registered: {resolved}")
+        console.print(f"[yellow]already registered:[/yellow] [cyan]{resolved}[/cyan]")
         return
     cfg.projects.append(resolved)
     save(cfg, _CONFIG_PATH)
-    typer.echo(f"added: {resolved}")
+    console.print(f"[green]✓ added[/green] [cyan]{resolved}[/cyan]")
 
 
-@app.command()
-def remove(path: Path) -> None:
+@app.command(rich_help_panel=CONFIG_PANEL)
+def remove(
+    path: Path = typer.Argument(..., help="Project directory to unregister."),
+) -> None:
     """Unregister a project directory."""
     cfg = _load_config_or_exit()
     resolved = path.resolve()
     if resolved not in cfg.projects:
-        typer.echo(f"not registered: {resolved}", err=True)
+        err_console.print(f"[red]error:[/red] not registered: [cyan]{resolved}[/cyan]")
         raise typer.Exit(code=1)
     cfg.projects.remove(resolved)
     save(cfg, _CONFIG_PATH)
-    typer.echo(f"removed: {resolved}")
+    console.print(f"[green]✓ removed[/green] [cyan]{resolved}[/cyan]")
 
 
-@app.command(name="list")
+@app.command(name="list", rich_help_panel=CONFIG_PANEL)
 def list_projects() -> None:
     """List registered project directories."""
     cfg = _load_config_or_exit()
     if not cfg.projects:
-        typer.echo("(no projects registered)")
+        console.print("[dim](no projects registered)[/dim]")
         return
-    for p in cfg.projects:
-        typer.echo(str(p))
+    table = Table(
+        title="Watched projects",
+        title_style="bold",
+        title_justify="left",
+        show_header=True,
+        header_style="bold cyan",
+        box=None,
+        pad_edge=False,
+    )
+    table.add_column("#", style="dim", width=3, justify="right")
+    table.add_column("Path", style="white")
+    for i, p in enumerate(cfg.projects, 1):
+        table.add_row(str(i), str(p))
+    console.print(table)
 
 
-@app.command()
+@app.command(rich_help_panel=RUN_PANEL)
 def run(
-    since: Optional[str] = typer.Option(None, "--since", help="Time window, e.g. 24h, 3d."),
-    out: Optional[Path] = typer.Option(None, "--out", help="Output file path."),
-    no_clip: bool = typer.Option(False, "--no-clip", help="Skip clipboard copy."),
-    model: Optional[str] = typer.Option(None, "--model", help="Model passed to `claude -p`."),
-    claude_binary: Optional[str] = typer.Option(None, "--claude-binary", help="Path to claude CLI."),
+    since: Optional[str] = typer.Option(
+        None, "--since", "-s",
+        help="Time window. Format: [cyan]Nm[/cyan]/[cyan]Nh[/cyan]/[cyan]Nd[/cyan]/[cyan]Nw[/cyan] (e.g. [cyan]24h[/cyan], [cyan]3d[/cyan], [cyan]90m[/cyan]).",
+    ),
+    out: Optional[Path] = typer.Option(
+        None, "--out", "-o",
+        help="Output file path. Default: [cyan]<out_dir>/YYYY-MM-DD.md[/cyan].",
+    ),
+    no_clip: bool = typer.Option(
+        False, "--no-clip",
+        help="Skip clipboard copy.",
+    ),
+    model: Optional[str] = typer.Option(
+        None, "--model", "-m",
+        help="Model passed to [bold]claude -p[/bold] (e.g. [cyan]sonnet[/cyan], [cyan]opus[/cyan], [cyan]haiku[/cyan]).",
+    ),
+    claude_binary: Optional[str] = typer.Option(
+        None, "--claude-binary",
+        help="Override path to the [bold]claude[/bold] CLI.",
+    ),
 ) -> None:
-    """Crawl sessions, generate report, write file/stdout/clipboard."""
+    """
+    Crawl session JSONLs, summarize, write report.
+
+    [dim]The report is written to --out, echoed to stdout, and copied to the
+    clipboard unless --no-clip is set. stdout is just the report content
+    (status messages go to stderr) so piping works:[/dim]
+
+      [dim]$ reporter run | less[/dim]
+    """
     cfg = _load_config_or_exit()
     since_str = since or cfg.since
     model_name = model or cfg.model
@@ -125,13 +219,21 @@ def run(
     try:
         delta = parse_duration(since_str)
     except ValueError as e:
-        typer.echo(f"error: {e}", err=True)
+        err_console.print(f"[red]error:[/red] {e}")
         raise typer.Exit(code=1)
     cutoff = datetime.now(timezone.utc) - delta
 
+    err_console.print(
+        f"[dim]window:[/dim] [cyan]{since_str}[/cyan]  "
+        f"[dim]model:[/dim] [cyan]{model_name}[/cyan]  "
+        f"[dim]projects:[/dim] [cyan]{len(cfg.projects)}[/cyan]"
+    )
+
     files = discover_session_files(cfg.projects, projects_dir=projects_dir)
     if not files:
-        typer.echo(f"No activity in last {since_str} (no session files found).", err=True)
+        err_console.print(
+            f"[yellow]No activity in last {since_str}[/yellow] [dim](no session files found).[/dim]"
+        )
         raise typer.Exit(code=2)
 
     sessions: dict[str, list[dict]] = {}
@@ -150,21 +252,48 @@ def run(
 
     sessions = {k: v for k, v in sessions.items() if v}
     if not sessions:
-        typer.echo(f"No activity in last {since_str}.", err=True)
+        err_console.print(f"[yellow]No activity in last {since_str}.[/yellow]")
         raise typer.Exit(code=2)
+
+    total_events = sum(len(v) for v in sessions.values())
+    err_console.print(
+        f"[dim]sessions:[/dim] [cyan]{len(sessions)}[/cyan]  "
+        f"[dim]events:[/dim] [cyan]{total_events}[/cyan]  "
+        f"[dim]files:[/dim] [cyan]{len(files)}[/cyan]"
+    )
 
     sessions = trim_to_budget(sessions, COMPACT_CHAR_BUDGET)
     compacted = "\n".join(render_session(slug, evs) for slug, evs in sessions.items())
     prompt = build_prompt(today, compacted)
 
     try:
-        report = generate_report(prompt=prompt, binary=binary, model=model_name)
+        with err_console.status(
+            f"[bold green]Generating report[/bold green] [dim]via `{binary} -p --model {model_name}`...[/dim]",
+            spinner="dots",
+        ):
+            report = generate_report(prompt=prompt, binary=binary, model=model_name)
     except ClaudeError as e:
-        typer.echo(f"error: {e}", err=True)
+        err_console.print(f"[red]error:[/red] {e}")
         raise typer.Exit(code=3)
 
     try:
         deliver(report, out, clipboard=use_clipboard)
     except OutputError as e:
-        typer.echo(f"error: {e}", err=True)
+        err_console.print(f"[red]error:[/red] {e}")
         raise typer.Exit(code=1)
+
+    err_console.print()
+    err_console.print(
+        Panel(
+            f"[green]✓[/green] report written to [cyan]{out}[/cyan]\n"
+            + (
+                "[green]✓[/green] copied to clipboard"
+                if use_clipboard
+                else "[dim]clipboard skipped[/dim]"
+            ),
+            title="[bold green]done[/bold green]",
+            title_align="left",
+            border_style="green",
+            expand=False,
+        )
+    )

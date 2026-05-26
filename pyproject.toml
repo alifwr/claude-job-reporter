@@ -1,6 +1,6 @@
 [project]
 name = "claude-job-reporter"
-version = "0.1.0"
+version = "0.2.0"
 description = "Daily activity reports from Claude Code session transcripts"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,6 +21,7 @@ classifiers = [
 ]
 dependencies = [
     "typer>=0.12",
+    "rich>=13.0",
     "pyperclip>=1.8",
     "tomli-w>=1.0",
 ]
