@@ -37,3 +37,17 @@ def test_build_prompt_explains_pascalcase_tag_rule():
 def test_build_prompt_mentions_etc_bucket():
     out = build_prompt("2026-05-25", "x")
     assert "# Etc" in out
+
+
+def test_build_prompt_caps_three_bullets_per_project():
+    out = build_prompt("2026-05-28", "")
+    text = out.lower()
+    assert "3 bullets" in text or "three bullets" in text
+
+
+def test_build_prompt_demands_outcomes_not_mechanics():
+    out = build_prompt("2026-05-28", "")
+    text = out.lower()
+    assert "outcome" in text
+    assert "decision" in text or "decisions" in text
+    assert "mechanic" in text or "mechanics" in text
