@@ -128,3 +128,34 @@ def test_list_without_init_exits_1(tmp_path: Path):
     cfg = tmp_path / "missing.toml"
     result = runner.invoke(app, ["--config", str(cfg), "list"])
     assert result.exit_code == 1
+
+
+def test_run_no_interactive_flag_skips_refine_loop(tmp_path: Path, monkeypatch):
+    """--no-interactive should exit immediately after the first report is delivered."""
+    cfg = tmp_path / "config.toml"
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    runner.invoke(app, ["--config", str(cfg), "init"])
+    runner.invoke(app, ["--config", str(cfg), "add", str(proj)])
+
+    fake_projects = tmp_path / "claude_projects"
+    slug_dir = fake_projects / str(proj).replace("/", "-")
+    from datetime import datetime, timezone, timedelta
+    recent = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    _write_session(slug_dir, proj, recent)
+
+    monkeypatch.setenv("REPORTER_PROJECTS_DIR", str(fake_projects))
+    fake_claude = Path(__file__).parent / "fixtures" / "fake_claude.sh"
+    out_file = tmp_path / "report.md"
+
+    result = runner.invoke(app, [
+        "--config", str(cfg), "run",
+        "--since", "24h",
+        "--out", str(out_file),
+        "--no-clip",
+        "--no-interactive",
+        "--claude-binary", str(fake_claude),
+    ])
+
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert out_file.exists()

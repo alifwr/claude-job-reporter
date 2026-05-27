@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -24,6 +25,7 @@ from reporter.compactor import extract_event, render_session, trim_to_budget
 from reporter.reporter import generate_report, ClaudeError
 from reporter.output import deliver, OutputError
 from reporter.prompts import build_prompt
+from reporter.refine import run_refine_loop
 
 COMPACT_CHAR_BUDGET = 200_000  # ~50k tokens
 
@@ -193,6 +195,10 @@ def run(
         None, "--claude-binary",
         help="Override path to the [bold]claude[/bold] CLI.",
     ),
+    no_interactive: bool = typer.Option(
+        False, "--no-interactive",
+        help="Skip the post-report refine loop even on an interactive terminal.",
+    ),
 ) -> None:
     """
     Crawl session JSONLs, summarize, write report.
@@ -297,3 +303,13 @@ def run(
             expand=False,
         )
     )
+
+    if not no_interactive and sys.stdin.isatty():
+        run_refine_loop(
+            initial_report=report,
+            out=out,
+            clipboard=use_clipboard,
+            binary=binary,
+            model=model_name,
+            today=today,
+        )
