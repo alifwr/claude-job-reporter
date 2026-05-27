@@ -1,4 +1,4 @@
-from reporter.prompts import build_prompt
+from reporter.prompts import build_prompt, build_refinement_prompt
 
 
 def test_build_prompt_includes_compacted():
@@ -51,3 +51,15 @@ def test_build_prompt_demands_outcomes_not_mechanics():
     assert "outcome" in text
     assert "decision" in text or "decisions" in text
     assert "mechanic" in text or "mechanics" in text
+
+
+def test_build_refinement_prompt_includes_previous_and_feedback():
+    previous = "Good Morning, AI Team report:\n\nYesterday :\n\n#Reporter\n\n- ship v0.2.0"
+    feedback = "Use Indonesian for the greeting."
+
+    out = build_refinement_prompt(previous, feedback)
+
+    assert previous.strip() in out
+    assert feedback.strip() in out
+    assert "template" in out.lower() or "format" in out.lower()
+    assert "plain text" in out.lower()

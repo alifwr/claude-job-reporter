@@ -47,3 +47,25 @@ Below is the session data, in chronological order across all projects:
 def build_prompt(today: str, compacted: str) -> str:
     """Render the full prompt for `claude -p`."""
     return PROMPT_TEMPLATE.format(today=today, compacted=compacted)
+
+
+REFINEMENT_TEMPLATE = """You previously produced this daily report for my supervisor:
+
+---
+{previous}
+---
+
+I have a refinement request:
+
+{feedback}
+
+Produce a revised version of the report that addresses this feedback. Keep the same template, greeting, formatting rules, and outcome-focused style as the original. Output ENGLISH PLAIN TEXT (no markdown — the recipient is KakaoTalk).
+"""
+
+
+def build_refinement_prompt(previous_report: str, feedback: str) -> str:
+    """Render the refinement-turn prompt for `claude -p`."""
+    return REFINEMENT_TEMPLATE.format(
+        previous=previous_report.strip(),
+        feedback=feedback.strip(),
+    )
