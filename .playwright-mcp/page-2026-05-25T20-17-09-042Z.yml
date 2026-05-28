@@ -1,0 +1,54 @@
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - link "Gmail" [ref=e8] [cursor=pointer]:
+          - /url: https://mail.google.com/mail/&ogbl
+        - link "Telusuri Gambar" [ref=e10] [cursor=pointer]:
+          - /url: https://www.google.com/imghp?hl=id&ogbl
+          - text: Gambar
+      - button "Aplikasi Google" [ref=e13] [cursor=pointer]:
+        - img [ref=e14]
+      - link "Login" [ref=e18] [cursor=pointer]:
+        - /url: https://accounts.google.com/ServiceLogin?hl=id&passive=true&continue=https://www.google.com/&ec=futura_exp_og_so_72776762_e
+  - img "Google" [ref=e21]
+  - search [ref=e29]:
+    - generic [ref=e31]:
+      - generic [ref=e33]:
+        - img [ref=e37]
+        - combobox "Cari" [active] [ref=e40]
+        - generic [ref=e42]:
+          - button "Telusuri dengan suara" [ref=e43] [cursor=pointer]:
+            - img [ref=e44]
+          - button "Telusuri pakai gambar" [ref=e46] [cursor=pointer]:
+            - img [ref=e47]
+      - generic [ref=e50]:
+        - button "Penelusuran Google" [ref=e51] [cursor=pointer]
+        - button "Saya Lagi Beruntung" [ref=e52] [cursor=pointer]
+  - generic [ref=e55]:
+    - text: "Google tersedia dalam bahasa:"
+    - link "English" [ref=e56] [cursor=pointer]:
+      - /url: https://www.google.com/setprefs?sig=0_DFw4zwh44Jj6_mHIbOf214lpOx4%3D&hl=en&source=homepage&sa=X&ved=0ahUKEwi48PmAodWUAxUlSGwGHfH2NEoQ2ZgBCBU
+    - link:
+      - /url: https://www.google.com/setprefs?sig=0_DFw4zwh44Jj6_mHIbOf214lpOx4%3D&hl=jv&source=homepage&sa=X&ved=0ahUKEwi48PmAodWUAxUlSGwGHfH2NEoQ2ZgBCBY
+    - link "Basa Bali" [ref=e57] [cursor=pointer]:
+      - /url: https://www.google.com/setprefs?sig=0_DFw4zwh44Jj6_mHIbOf214lpOx4%3D&hl=ban&source=homepage&sa=X&ved=0ahUKEwi48PmAodWUAxUlSGwGHfH2NEoQ2ZgBCBc
+  - contentinfo [ref=e59]:
+    - generic [ref=e60]: Indonesia
+    - generic [ref=e61]:
+      - generic [ref=e62]:
+        - link "Tentang" [ref=e63] [cursor=pointer]:
+          - /url: https://about.google/?utm_source=google-ID&utm_medium=referral&utm_campaign=hp-footer&fg=1
+        - link "Periklanan" [ref=e64] [cursor=pointer]:
+          - /url: https://www.google.com/intl/id_id/ads/?subid=ww-ww-et-g-awa-a-g_hpafoot1_1!o2&utm_source=google.com&utm_medium=referral&utm_campaign=google_hpafooter&fg=1
+        - link "Bisnis" [ref=e65] [cursor=pointer]:
+          - /url: https://www.google.com/services/?subid=ww-ww-et-g-awa-a-g_hpbfoot1_1!o2&utm_source=google.com&utm_medium=referral&utm_campaign=google_hpbfooter&fg=1
+        - link "Cara kerja Penelusuran" [ref=e66] [cursor=pointer]:
+          - /url: https://google.com/search/howsearchworks/?fg=1
+      - generic [ref=e67]:
+        - link "Privasi" [ref=e68] [cursor=pointer]:
+          - /url: https://policies.google.com/privacy?hl=id&fg=1
+        - link "Persyaratan" [ref=e69] [cursor=pointer]:
+          - /url: https://policies.google.com/terms?hl=id&fg=1
+        - button "Setelan" [ref=e73] [cursor=pointer]:
+          - generic [ref=e74]: Setelan

@@ -39,10 +39,14 @@ def test_build_prompt_mentions_etc_bucket():
     assert "# Etc" in out
 
 
-def test_build_prompt_caps_three_bullets_per_project():
+def test_build_prompt_has_no_bullet_count_limit():
     out = build_prompt("2026-05-28", "")
     text = out.lower()
-    assert "3 bullets" in text or "three bullets" in text
+    # explicit no-limit rule must be present
+    assert "no bullet count limit" in text
+    # the old cap language must NOT be present
+    assert "max 3 bullets" not in text
+    assert "three bullets" not in text
 
 
 def test_build_prompt_demands_outcomes_not_mechanics():
