@@ -2,8 +2,7 @@
 from __future__ import annotations
 
 import json
-import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator
 
@@ -70,16 +69,25 @@ def discover_session_files(
     return found
 
 
-_DURATION_RE = re.compile(r"^(\d+)([mhdw])$")
-_UNIT_TO_KWARG = {"m": "minutes", "h": "hours", "d": "days", "w": "weeks"}
+def parse_start_datetime(s: str) -> datetime:
+    """Parse an ISO 8601 start datetime. Naive inputs assumed local timezone.
 
-
-def parse_duration(s: str) -> timedelta:
-    """Parse '24h', '3d', '90m', '1w' to a timedelta."""
-    m = _DURATION_RE.match(s.strip())
-    if not m:
-        raise ValueError(f"Invalid duration: {s!r} (expected e.g. '24h', '3d')")
-    return timedelta(**{_UNIT_TO_KWARG[m.group(2)]: int(m.group(1))})
+    Accepts: 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM[:SS]', 'YYYY-MM-DDTHH:MM[:SS]',
+    optional 'Z' or '+HH:MM' suffix.
+    """
+    s = s.strip()
+    normalized = s[:-1] + "+00:00" if s.endswith("Z") else s
+    try:
+        dt = datetime.fromisoformat(normalized)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid start datetime: {s!r}. Use YYYY-MM-DD, "
+            f"YYYY-MM-DD HH:MM, or ISO 8601 (e.g. 2026-05-28T09:00:00Z)."
+        ) from e
+    if dt.tzinfo is None:
+        local_tz = datetime.now().astimezone().tzinfo
+        dt = dt.replace(tzinfo=local_tz)
+    return dt
 
 
 def iter_events_in_window(

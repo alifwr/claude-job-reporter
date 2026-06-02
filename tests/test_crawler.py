@@ -1,8 +1,13 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 import pytest
-from reporter.crawler import path_to_slug, discover_session_files, parse_duration, iter_events_in_window
+from reporter.crawler import (
+    path_to_slug,
+    discover_session_files,
+    iter_events_in_window,
+    parse_start_datetime,
+)
 
 
 def test_simple_path():
@@ -69,25 +74,40 @@ def test_discover_skips_unrelated(tmp_path: Path):
     assert found == []
 
 
-def test_parse_duration_hours():
-    assert parse_duration("24h") == timedelta(hours=24)
+def test_parse_start_datetime_date_only():
+    dt = parse_start_datetime("2026-05-28")
+    assert dt.year == 2026 and dt.month == 5 and dt.day == 28
+    assert dt.hour == 0 and dt.minute == 0
+    assert dt.tzinfo is not None  # naive input -> local tz applied
 
 
-def test_parse_duration_days():
-    assert parse_duration("3d") == timedelta(days=3)
+def test_parse_start_datetime_space_separator():
+    dt = parse_start_datetime("2026-05-28 09:30")
+    assert dt.year == 2026 and dt.hour == 9 and dt.minute == 30
+    assert dt.tzinfo is not None
 
 
-def test_parse_duration_minutes():
-    assert parse_duration("90m") == timedelta(minutes=90)
+def test_parse_start_datetime_t_separator():
+    dt = parse_start_datetime("2026-05-28T09:30:15")
+    assert dt.hour == 9 and dt.minute == 30 and dt.second == 15
+    assert dt.tzinfo is not None
 
 
-def test_parse_duration_weeks():
-    assert parse_duration("1w") == timedelta(weeks=1)
+def test_parse_start_datetime_utc_z_suffix():
+    dt = parse_start_datetime("2026-05-28T09:00:00Z")
+    assert dt.tzinfo == timezone.utc
+    assert dt.hour == 9
 
 
-def test_parse_duration_invalid():
-    with pytest.raises(ValueError):
-        parse_duration("banana")
+def test_parse_start_datetime_explicit_offset():
+    dt = parse_start_datetime("2026-05-28T09:00:00+09:00")
+    assert dt.utcoffset().total_seconds() == 9 * 3600
+
+
+def test_parse_start_datetime_invalid_raises():
+    with pytest.raises(ValueError) as exc_info:
+        parse_start_datetime("banana")
+    assert "Invalid start datetime" in str(exc_info.value)
 
 
 def test_iter_events_in_window(tmp_path: Path):

@@ -11,7 +11,6 @@ import tomli_w
 DEFAULT_CONFIG_PATH = Path("~/.config/reporter/config.toml").expanduser()
 
 DEFAULTS: dict[str, Any] = {
-    "since": "30h",
     "model": "sonnet",
     "out_dir": Path("~/reports").expanduser(),
     "clipboard": True,
@@ -22,7 +21,6 @@ DEFAULTS: dict[str, Any] = {
 @dataclass
 class Config:
     projects: list[Path] = field(default_factory=list)
-    since: str = DEFAULTS["since"]
     model: str = DEFAULTS["model"]
     out_dir: Path = DEFAULTS["out_dir"]
     clipboard: bool = DEFAULTS["clipboard"]
@@ -46,7 +44,6 @@ def load(path: Path) -> Config:
 
     return Config(
         projects=[_expand(p) for p in data.get("projects", [])],
-        since=defaults.get("since", DEFAULTS["since"]),
         model=defaults.get("model", DEFAULTS["model"]),
         out_dir=_expand(defaults.get("out_dir", str(DEFAULTS["out_dir"]))),
         clipboard=defaults.get("clipboard", DEFAULTS["clipboard"]),
@@ -60,7 +57,6 @@ def save(cfg: Config, path: Path) -> None:
     data = {
         "projects": [str(p) for p in cfg.projects],
         "defaults": {
-            "since": cfg.since,
             "model": cfg.model,
             "out_dir": str(cfg.out_dir),
             "clipboard": cfg.clipboard,

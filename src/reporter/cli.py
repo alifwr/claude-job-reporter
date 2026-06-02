@@ -14,11 +14,13 @@ from rich.table import Table
 
 from reporter import __version__
 from reporter.config import Config, DEFAULT_CONFIG_PATH, load, save
+from datetime import timedelta
+
 from reporter.crawler import (
     CLAUDE_PROJECTS_DIR,
     discover_session_files,
     iter_events_in_window,
-    parse_duration,
+    parse_start_datetime,
     path_to_slug,
 )
 from reporter.compactor import extract_event, render_session, trim_to_budget
@@ -39,15 +41,17 @@ HELP_INTRO = """
 Generate daily activity reports from your Claude Code session transcripts.
 
 [bold]Workflow[/bold]
-  1. [cyan]reporter init[/cyan]                  create config file
-  2. [cyan]reporter add /path/to/proj[/cyan]     register a project to watch
-  3. [cyan]reporter run --since 24h[/cyan]       crawl + summarize via [bold]claude -p[/bold]
+  1. [cyan]reporter init[/cyan]                                  create config file
+  2. [cyan]reporter add /path/to/proj[/cyan]                     register a project to watch
+  3. [cyan]reporter run -s 2026-05-28[/cyan]                     crawl + summarize via [bold]claude -p[/bold]
 
 [bold]Examples[/bold]
-  [dim]$[/dim] reporter run                       [dim]# last 24h, default output path[/dim]
-  [dim]$[/dim] reporter run --since 3d            [dim]# last 3 days[/dim]
-  [dim]$[/dim] reporter run --out report.md       [dim]# custom path[/dim]
-  [dim]$[/dim] reporter run --no-clip             [dim]# skip clipboard copy[/dim]
+  [dim]$[/dim] reporter run                                  [dim]# last 24h, default output path[/dim]
+  [dim]$[/dim] reporter run -s 2026-05-28                    [dim]# since midnight of given date (local tz)[/dim]
+  [dim]$[/dim] reporter run -s '2026-05-28 09:00'            [dim]# explicit time[/dim]
+  [dim]$[/dim] reporter run -s 2026-05-28T09:00:00Z          [dim]# explicit UTC[/dim]
+  [dim]$[/dim] reporter run --out report.md                  [dim]# custom path[/dim]
+  [dim]$[/dim] reporter run --no-clip                        [dim]# skip clipboard copy[/dim]
 
 [dim]Config lives at ~/.config/reporter/config.toml unless --config is set.[/dim]
 """
@@ -157,6 +161,11 @@ def list_projects() -> None:
     if not cfg.projects:
         console.print("[dim](no projects registered)[/dim]")
         return
+    # Plain output when stdout is not a TTY so paths aren't truncated when piping.
+    if not sys.stdout.isatty():
+        for p in cfg.projects:
+            print(str(p))
+        return
     table = Table(
         title="Watched projects",
         title_style="bold",
@@ -167,7 +176,7 @@ def list_projects() -> None:
         pad_edge=False,
     )
     table.add_column("#", style="dim", width=3, justify="right")
-    table.add_column("Path", style="white")
+    table.add_column("Path", style="white", overflow="fold")
     for i, p in enumerate(cfg.projects, 1):
         table.add_row(str(i), str(p))
     console.print(table)
@@ -175,9 +184,9 @@ def list_projects() -> None:
 
 @app.command(rich_help_panel=RUN_PANEL)
 def run(
-    since: Optional[str] = typer.Option(
-        None, "--since", "-s",
-        help="Time window. Format: [cyan]Nm[/cyan]/[cyan]Nh[/cyan]/[cyan]Nd[/cyan]/[cyan]Nw[/cyan] (e.g. [cyan]24h[/cyan], [cyan]3d[/cyan], [cyan]90m[/cyan]).",
+    start_datetime: Optional[str] = typer.Option(
+        None, "--start-datetime", "-s",
+        help="Filter cutoff (inclusive). ISO 8601: [cyan]YYYY-MM-DD[/cyan], [cyan]YYYY-MM-DD HH:MM[/cyan], or [cyan]YYYY-MM-DDTHH:MM:SSZ[/cyan]. Naive values use local timezone. Default: 24h ago.",
     ),
     out: Optional[Path] = typer.Option(
         None, "--out", "-o",
@@ -210,7 +219,6 @@ def run(
       [dim]$ reporter run | less[/dim]
     """
     cfg = _load_config_or_exit()
-    since_str = since or cfg.since
     model_name = model or cfg.model
     binary = claude_binary or cfg.claude_binary
     use_clipboard = cfg.clipboard and not no_clip
@@ -222,15 +230,19 @@ def run(
     projects_dir_env = os.environ.get("REPORTER_PROJECTS_DIR")
     projects_dir = Path(projects_dir_env) if projects_dir_env else CLAUDE_PROJECTS_DIR
 
-    try:
-        delta = parse_duration(since_str)
-    except ValueError as e:
-        err_console.print(f"[red]error:[/red] {e}")
-        raise typer.Exit(code=1)
-    cutoff = datetime.now(timezone.utc) - delta
+    if start_datetime is None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        cutoff_label = "last 24h"
+    else:
+        try:
+            cutoff = parse_start_datetime(start_datetime)
+        except ValueError as e:
+            err_console.print(f"[red]error:[/red] {e}")
+            raise typer.Exit(code=1)
+        cutoff_label = f"since {cutoff.isoformat()}"
 
     err_console.print(
-        f"[dim]window:[/dim] [cyan]{since_str}[/cyan]  "
+        f"[dim]window:[/dim] [cyan]{cutoff_label}[/cyan]  "
         f"[dim]model:[/dim] [cyan]{model_name}[/cyan]  "
         f"[dim]projects:[/dim] [cyan]{len(cfg.projects)}[/cyan]"
     )
@@ -238,7 +250,7 @@ def run(
     files = discover_session_files(cfg.projects, projects_dir=projects_dir)
     if not files:
         err_console.print(
-            f"[yellow]No activity in last {since_str}[/yellow] [dim](no session files found).[/dim]"
+            f"[yellow]No activity {cutoff_label}[/yellow] [dim](no session files found).[/dim]"
         )
         raise typer.Exit(code=2)
 
@@ -258,7 +270,7 @@ def run(
 
     sessions = {k: v for k, v in sessions.items() if v}
     if not sessions:
-        err_console.print(f"[yellow]No activity in last {since_str}.[/yellow]")
+        err_console.print(f"[yellow]No activity {cutoff_label}.[/yellow]")
         raise typer.Exit(code=2)
 
     total_events = sum(len(v) for v in sessions.values())

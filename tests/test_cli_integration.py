@@ -87,7 +87,7 @@ def test_run_end_to_end(tmp_path: Path, monkeypatch):
 
     result = runner.invoke(app, [
         "--config", str(cfg), "run",
-        "--since", "24h",
+        "--start-datetime", "2026-01-01",
         "--out", str(out_file),
         "--no-clip",
         "--claude-binary", str(fake_claude),
@@ -109,7 +109,7 @@ def test_run_exits_2_when_no_sessions(tmp_path: Path, monkeypatch):
 
     result = runner.invoke(app, [
         "--config", str(cfg), "run",
-        "--since", "1h",
+        "--start-datetime", "2999-01-01",
         "--no-clip",
         "--claude-binary", str(fake_claude),
         "--out", str(tmp_path / "r.md"),
@@ -150,7 +150,7 @@ def test_run_no_interactive_flag_skips_refine_loop(tmp_path: Path, monkeypatch):
 
     result = runner.invoke(app, [
         "--config", str(cfg), "run",
-        "--since", "24h",
+        "--start-datetime", "2026-01-01",
         "--out", str(out_file),
         "--no-clip",
         "--no-interactive",
