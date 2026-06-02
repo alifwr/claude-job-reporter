@@ -57,6 +57,17 @@ def test_build_prompt_demands_outcomes_not_mechanics():
     assert "mechanic" in text or "mechanics" in text
 
 
+def test_build_prompt_demands_first_person_dropped_subject():
+    out = build_prompt("2026-05-28", "")
+    text = out.lower()
+    assert "first-person" in text
+    # Must explicitly state the subject is dropped
+    assert 'dropped' in text or 'omit' in text
+    # Past tense for Yesterday, present/future for Today
+    assert "past-tense" in text
+    assert "present-continuous" in text or "future" in text
+
+
 def test_build_refinement_prompt_includes_previous_and_feedback():
     previous = "Good Morning, AI Team report:\n\nYesterday :\n\n#Reporter\n\n- ship v0.2.0"
     feedback = "Use Indonesian for the greeting."
