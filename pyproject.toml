@@ -1,6 +1,6 @@
 [project]
 name = "claude-job-reporter"
-version = "0.6.0"
+version = "0.7.0"
 description = "Daily activity reports from Claude Code session transcripts"
 readme = "README.md"
 requires-python = ">=3.11"

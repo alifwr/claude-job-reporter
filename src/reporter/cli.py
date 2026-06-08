@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -30,6 +31,8 @@ from reporter.prompts import build_prompt
 from reporter.refine import run_refine_loop
 
 COMPACT_CHAR_BUDGET = 200_000  # ~50k tokens
+PER_SESSION_EVENT_CAP = 1500   # newest-N events per project to bound memory
+DEFAULT_CLAUDE_TIMEOUT = 600   # seconds; was 300, raised for large prompts
 
 console = Console()
 err_console = Console(stderr=True)
@@ -204,6 +207,10 @@ def run(
         None, "--claude-binary",
         help="Override path to the [bold]claude[/bold] CLI.",
     ),
+    timeout: int = typer.Option(
+        DEFAULT_CLAUDE_TIMEOUT, "--timeout",
+        help="Seconds to wait for [bold]claude -p[/bold] before giving up.",
+    ),
     no_interactive: bool = typer.Option(
         False, "--no-interactive",
         help="Skip the post-report refine loop even on an interactive terminal.",
@@ -254,8 +261,9 @@ def run(
         )
         raise typer.Exit(code=2)
 
-    sessions: dict[str, list[dict]] = {}
+    sessions_q: dict[str, deque] = {}
     project_for_slug = {path_to_slug(p): str(p) for p in cfg.projects}
+    dropped_events = 0
 
     for jsonl in files:
         slug_dir_name = jsonl.parent.name
@@ -263,21 +271,26 @@ def run(
             (name for slug, name in project_for_slug.items() if slug_dir_name.startswith(slug)),
             slug_dir_name,
         )
+        q = sessions_q.setdefault(display, deque(maxlen=PER_SESSION_EVENT_CAP))
         for ev in iter_events_in_window(jsonl, cutoff):
             extracted = extract_event(ev)
-            if extracted is not None:
-                sessions.setdefault(display, []).append(extracted)
+            if extracted is None:
+                continue
+            if len(q) == q.maxlen:
+                dropped_events += 1
+            q.append(extracted)
 
-    sessions = {k: v for k, v in sessions.items() if v}
+    sessions: dict[str, list[dict]] = {k: list(v) for k, v in sessions_q.items() if v}
     if not sessions:
         err_console.print(f"[yellow]No activity {cutoff_label}.[/yellow]")
         raise typer.Exit(code=2)
 
     total_events = sum(len(v) for v in sessions.values())
+    cap_note = f"  [dim](dropped {dropped_events} oldest events past per-session cap of {PER_SESSION_EVENT_CAP})[/dim]" if dropped_events else ""
     err_console.print(
         f"[dim]sessions:[/dim] [cyan]{len(sessions)}[/cyan]  "
         f"[dim]events:[/dim] [cyan]{total_events}[/cyan]  "
-        f"[dim]files:[/dim] [cyan]{len(files)}[/cyan]"
+        f"[dim]files:[/dim] [cyan]{len(files)}[/cyan]{cap_note}"
     )
 
     sessions = trim_to_budget(sessions, COMPACT_CHAR_BUDGET)
@@ -289,7 +302,7 @@ def run(
             f"[bold green]Generating report[/bold green] [dim]via `{binary} -p --model {model_name}`...[/dim]",
             spinner="dots",
         ):
-            report = generate_report(prompt=prompt, binary=binary, model=model_name)
+            report = generate_report(prompt=prompt, binary=binary, model=model_name, timeout=timeout)
     except ClaudeError as e:
         err_console.print(f"[red]error:[/red] {e}")
         raise typer.Exit(code=3)
